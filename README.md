@@ -381,4 +381,7 @@ fixed4 frag (v2f i) : SV_Target
 - 替换Inspector中的skybox对象
 - 点击Update按钮即可查看效果
 
+# 3. 其他
+
+本项目仅做学习之用，诸多细节并未进行性能优化，也未就多平台进行过测试。请谨慎使用。
 
