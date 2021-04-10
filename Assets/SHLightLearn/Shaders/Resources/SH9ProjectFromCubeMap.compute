@@ -1,0 +1,82 @@
+﻿//利用球面均匀采样，从CubeMap中提取球谐光照参数
+
+#pragma kernel CSMain
+#include "../SHCommon.hlsl"
+
+#define THREAD_X 8
+#define THREAD_Y 8 
+#define SH_DEGREE 3  //球谐阶
+
+static uint shcCount = SH_DEGREE * SH_DEGREE;
+SamplerState PointClampSampler;
+
+TextureCube<float4> CubeMap;
+//采样数
+uint2 SampleSize;
+
+//每个ThreadGroup将自己内部的求和结果存到buffer对应的偏移位置。
+//每个ThreadGroup在里面占据{shcCount}个float4。
+RWStructuredBuffer<float4> shcBuffer;
+
+//来用保存ThreadGroup内部每个线程的计算结果。在此处数组大小为 8*8*9=576
+groupshared float4 shcGroup[THREAD_X * THREAD_Y * SH_DEGREE * SH_DEGREE];
+
+static float4 SampleCube(float theta,float phi){
+    float3 dir = UnitDirFromThetaPhi(theta,phi);
+    float4 color = CubeMap.SampleLevel(PointClampSampler,dir,1);
+    return color;
+}
+
+//groupIndex为当前线程在线程组中的索引
+static void CalSH(float theta,float phi,uint groupIndex){
+    float4 color = SampleCube(theta,phi);
+    uint N = SampleSize.x * SampleSize.y;
+    float A = 4 * PI / N;
+    uint groupOffset = groupIndex * shcCount;//此处shcCount是9
+    shcGroup[groupOffset + 0] = color * GetY00(theta,phi) * A;
+    shcGroup[groupOffset + 1] = color * GetY1n1(theta,phi) * A;
+    shcGroup[groupOffset + 2] = color * GetY10(theta,phi) * A;
+    shcGroup[groupOffset + 3] = color * GetY1p1(theta,phi) * A;
+    shcGroup[groupOffset + 4] = color * GetY2n2(theta,phi) * A;
+    shcGroup[groupOffset + 5] = color * GetY2n1(theta,phi) * A;
+    shcGroup[groupOffset + 6] = color * GetY20(theta,phi) * A;
+    shcGroup[groupOffset + 7] = color * GetY2p1(theta,phi) * A;
+    shcGroup[groupOffset + 8] = color * GetY2p2(theta,phi) * A;
+}
+
+//生成均匀分布的球面采样
+static void GetThetaPhi(uint x,uint y,out float theta,out float phi){
+    theta = acos(1 - x * 2.0 / (SampleSize.x - 1));
+    phi = 2 * PI * (y * 1.0 / (SampleSize.y - 1));
+}
+
+[numthreads(THREAD_X,THREAD_Y,1)]
+void CSMain (uint3 groupID : SV_GroupID,uint3 id : SV_DispatchThreadID,uint groupIndex : SV_GroupIndex)
+{
+    float theta,phi;
+    GetThetaPhi(id.x,id.y,theta,phi);
+    CalSH(theta,phi,groupIndex);
+    GroupMemoryBarrierWithGroupSync();
+    uint threadCount = THREAD_X * THREAD_Y;
+    for(uint k = (threadCount >> 1); k > 0; k >>= 1){
+        if(groupIndex < k)
+        {
+            uint shIndex = groupIndex * shcCount; 
+            uint shIndex2 = (groupIndex + k) * shcCount;
+            for(uint offset = 0; offset < shcCount; offset ++){
+                shcGroup[shIndex + offset] += shcGroup[shIndex2 + offset];
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if(groupIndex == 0){
+        uint groupCountX = SampleSize.x / THREAD_X;
+        uint index = (groupID.y * groupCountX + groupID.x) * shcCount;
+        for(uint i = 0; i < shcCount; i ++){
+            float4 c = shcGroup[i];
+            shcBuffer[index + i] = c;
+        }
+    }
+    
+}

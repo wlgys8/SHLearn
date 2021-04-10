@@ -1,0 +1,83 @@
+﻿//将CubeMap的6个面映射到一张贴图上
+
+#pragma kernel CSMain
+
+#include "../SHCommon.hlsl"
+
+RWTexture2D<float4> Result;
+
+uniform float4 shC[9];
+uniform uint faceSize;
+
+SamplerState PointClampSampler;
+
+static half3 faceBasis[18] = {
+    //front
+    {0,0,1},
+    {1,0,0},
+    {0,1,0},
+    //behind
+    {1,0,0},
+    {-1,0,0},
+    {0,1,0},
+    //left
+    {0,0,0},
+    {0,0,1},
+    {0,1,0},
+    //right
+    {1,0,1},
+    {0,0,-1},
+    {0,1,0},
+    //bottom
+    {0,0,0},
+    {1,0,0},
+    {0,0,1},
+    //top
+    {0,1,1},
+    {1,0,0},
+    {0,0,-1}
+};
+
+static half2 uvOffsets[6] = {
+    //front
+    {1,1},
+    //behind
+    {3,1},
+    //left
+    {0,1},
+    //right
+    {2,1},
+    //bottom
+    {1,0},
+    //top
+    {1,2}
+};
+
+
+
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint faceIndex = id.z;
+    uint basisOffset = faceIndex * 3;
+    uint3 center = uint3(faceSize,faceSize,faceSize) / 2;
+    float3 ray = (faceBasis[basisOffset] * faceSize + id.x * faceBasis[basisOffset + 1] + id.y * faceBasis[basisOffset + 2]) - center;
+    ray = normalize(ray);
+    float3 p = float3(ray.x,ray.z,ray.y);
+    float4 color = 
+        shC[0] * GetY00(p) + 
+        shC[1] * GetY1n1(p) + 
+        shC[2] * GetY10(p) + 
+        shC[3] * GetY1p1(p) + 
+        shC[4] * GetY2n2(p) + 
+        shC[5] * GetY2n1(p) + 
+        shC[6] * GetY20(p) + 
+        shC[7] * GetY2p1(p) + 
+        shC[8] * GetY2p2(p);
+    uint2 uvOffset = uvOffsets[faceIndex] * faceSize;
+    color.rgb = pow(clamp(color.rgb,0,1),0.45);
+    color.a = 1;
+    Result[id.xy + uvOffset ] = color; //convert to gamma space
+
+}

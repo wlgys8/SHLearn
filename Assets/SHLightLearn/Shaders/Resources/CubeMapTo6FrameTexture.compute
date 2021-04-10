@@ -1,0 +1,65 @@
+﻿//将CubeMap的6个面映射到一张贴图上
+
+#pragma kernel CSMain
+
+RWTexture2D<float4> Result;
+TextureCube<float4> _CubeMap;
+SamplerState PointClampSampler;
+
+static half3 faceBasis[18] = {
+    //front
+    {0,0,1},
+    {1,0,0},
+    {0,1,0},
+    //behind
+    {1,0,0},
+    {-1,0,0},
+    {0,1,0},
+    //left
+    {0,0,0},
+    {0,0,1},
+    {0,1,0},
+    //right
+    {1,0,1},
+    {0,0,-1},
+    {0,1,0},
+    //bottom
+    {0,0,0},
+    {1,0,0},
+    {0,0,1},
+    //top
+    {0,1,1},
+    {1,0,0},
+    {0,0,-1}
+};
+
+static half2 uvOffsets[6] = {
+    //front
+    {1,1},
+    //behind
+    {3,1},
+    //left
+    {0,1},
+    //right
+    {2,1},
+    //bottom
+    {1,0},
+    //top
+    {1,2}
+};
+
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint faceSize = 512;
+    uint faceIndex = id.z;
+    uint basisOffset = faceIndex * 3;
+    uint3 center = uint3(faceSize,faceSize,faceSize) / 2;
+    float3 ray = (faceBasis[basisOffset] * faceSize + id.x * faceBasis[basisOffset + 1] + id.y * faceBasis[basisOffset + 2]) - center;
+    ray = normalize(ray);
+    float4 color = _CubeMap.SampleLevel(PointClampSampler,ray,1);
+    color.rgb = pow(abs(color.rgb),0.45);
+    uint2 uvOffset = uvOffsets[faceIndex] * faceSize;
+    Result[id.xy + uvOffset ] = color;
+}
