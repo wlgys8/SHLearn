@@ -200,7 +200,7 @@ race condition writing to shared resource detected
 
 https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf
 
-这篇Paper里探讨了好几种求和算法，一个比一个牛逼。本项目仅大致实现了其中一个（能用就行）。如在产品级使用的精益求精者，请自行修改。
+这篇Paper里探讨了好几种求和算法，一个比一个牛逼。优化方向是通过避免Bank Conflicts来提升数据读写带宽。但本文重点不在于此，因此不考虑这个优化，只是大致按这个思路实现了求和。如在产品级使用的精益求精者，请自行修改。
 
 用简单的话概括一下就是，假如一个ThreadGroup里有n个线程，我们要对这个n个线程的计算结果求和，可以采样如下方式:
 
